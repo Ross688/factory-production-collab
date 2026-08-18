@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}打卡 - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h4 class="mb-0"><i class="bi bi-clipboard-check"></i> 打卡</h4>
+</div>
+
+<div class="row">
+    <!-- 左侧：打卡操作 -->
+    <div class="col-md-5 mb-4">
+        <!-- 步骤定义管理 -->
+        <div class="card mb-3">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-gear"></i> 步骤管理（管理员先设置）</span>
+                <button class="btn btn-sm btn-outline-light" data-bs-toggle="collapse" data-bs-target="#stepDefSection">
+                    <i class="bi bi-plus"></i> 管理
+                </button>
+            </div>
+            <div class="collapse" id="stepDefSection">
+                <div class="card-body">
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control" id="newStepName" placeholder="步骤名称（如：机芯生产）">
+                        <select class="form-select" id="newStepCategory" style="max-width:120px;">
+                            <option value="production">生产</option>
+                            <option value="sampling">打样</option>
+                            <option value="common">准备</option>
+                            <option value="inspection">验货</option>
+                            <option value="testing">测试</option>
+                        </select>
+                        <button class="btn btn-primary" id="addStepDefBtn"><i class="bi bi-plus"></i> 添加</button>
+                    </div>
+                    <div class="table-responsive" style="max-height:200px;">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>步骤名称</th>
+                                    <th>分类</th>
+                                    <th style="width:50px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stepDefList">
+                                {% for sd in step_defs %}
+                                <tr data-id="{{ sd.id }}">
+                                    <td>{{ sd.name }}</td>
+                                    <td><span class="badge bg-secondary">{{ sd.category }}</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger delete-stepdef-btn" data-id="{{ sd.id }}">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if not step_defs %}
+                    <div class="text-muted small mt-1">暂无步骤，请先添加</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 打卡表单 -->
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-pencil-square"></i> 打卡登记
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">选择订单 <span class="text-danger">*</span></label>
+                    <select class="form-select" id="checkin_order_id">
+                        <option value="">-- 请选择订单 --</option>
+                        {% for o in orders %}
+                        <option value="{{ o.id }}">{{ o.order_no }} - {{ o.product_name }} ({{ o.customer_name }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">选择步骤 <span class="text-danger">*</span></label>
+                    <select class="form-select" id="checkin_step_name">
+                        <option value="">-- 请选步骤 --</option>
+                        {% for sd in step_defs %}
+                        <option value="{{ sd.name }}">{{ sd.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="checkin_status">
+                        <option value="in_progress">进行中</option>
+                        <option value="completed">已完成</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">已完成数量</label>
+                    <input type="number" class="form-control" id="checkin_qty" placeholder="0" min="0" step="1">
+                    <small class="text-muted">填写数量将同步到产能预期对应订单</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">操作人</label>
+                    <input type="text" class="form-control" id="checkin_operator" placeholder="姓名">
+                </div>
+                <button class="btn btn-success w-100" id="checkinSaveBtn">
+                    <i class="bi bi-check-lg"></i> 提交打卡
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：打卡记录 -->
+    <div class="col-md-7 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> 打卡记录</h5>
+                <div style="max-width:250px;">
+                    <select class="form-select form-select-sm" id="recordFilterOrder">
+                        <option value="">全部订单</option>
+                        {% for o in orders %}
+                        <option value="{{ o.id }}">{{ o.order_no }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if records %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>订单</th>
+                                <th>产品</th>
+                                <th>步骤</th>
+                                <th>状态</th>
+                                <th>完成数量</th>
+                                <th>操作人</th>
+                                <th>日期</th>
+                                <th style="width:50px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recordTableBody">
+                            {% for r in records %}
+                            <tr data-order-id="{{ r.order_id }}">
+                                <td><strong>{{ r.order.order_no if r.order else '--' }}</strong></td>
+                                <td>{{ r.order.product_name if r.order else '--' }}</td>
+                                <td>{{ r.step_name }}</td>
+                                <td>
+                                    {% if r.status == 'in_progress' %}
+                                    <span class="badge bg-primary">进行中</span>
+                                    {% else %}
+                                    <span class="badge bg-success">已完成</span>
+                                    {% endif %}
+                                </td>
+                                <td class="fw-bold {% if r.completed_qty > 0 %}text-success{% endif %}">
+                                    {{ "%.0f"|format(r.completed_qty) if r.completed_qty > 0 else '-' }}
+                                </td>
+                                <td>{{ r.operator or '-' }}</td>
+                                <td><small>{{ r.checkin_date }}</small></td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger delete-checkin-btn" data-id="{{ r.id }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-clipboard-check" style="font-size: 3rem;"></i>
+                    <p class="mt-2">暂无打卡记录</p>
+                    <p class="small">请先在左侧添加步骤定义，然后选择订单和步骤进行打卡</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ==================== 步骤定义管理 ====================
+    document.getElementById('addStepDefBtn').addEventListener('click', function() {
+        var name = document.getElementById('newStepName').value.trim();
+        var category = document.getElementById('newStepCategory').value;
+        if (!name) { alert('请输入步骤名称'); return; }
+
+        fetch('/api/step-definitions/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, category: category})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || '添加失败');
+            }
+        })
+        .catch(function() { alert('网络错误'); });
+    });
+
+    document.querySelectorAll('.delete-stepdef-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('确定删除此步骤定义吗？')) return;
+            fetch('/api/step-definitions/' + this.dataset.id + '/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) location.reload();
+                else alert(data.error);
+            });
+        });
+    });
+
+    // ==================== 打卡保存 ====================
+    document.getElementById('checkinSaveBtn').addEventListener('click', function() {
+        var orderId = document.getElementById('checkin_order_id').value;
+        var stepName = document.getElementById('checkin_step_name').value;
+        var status = document.getElementById('checkin_status').value;
+        var qty = parseFloat(document.getElementById('checkin_qty').value) || 0;
+        var operator = document.getElementById('checkin_operator').value.trim();
+
+        if (!orderId) { alert('请选择订单'); return; }
+        if (!stepName) { alert('请选择步骤'); return; }
+
+        fetch('/api/checkin/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                order_id: parseInt(orderId),
+                step_name: stepName,
+                status: status,
+                completed_qty: qty,
+                operator: operator
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || '打卡失败');
+            }
+        })
+        .catch(function() { alert('网络错误'); });
+    });
+
+    // ==================== 打卡记录筛选 ====================
+    document.getElementById('recordFilterOrder').addEventListener('change', function() {
+        var orderId = this.value;
+        var rows = document.querySelectorAll('#recordTableBody tr');
+        rows.forEach(function(row) {
+            if (!orderId || row.dataset.orderId === orderId) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+
+    // ==================== 删除打卡记录 ====================
+    document.querySelectorAll('.delete-checkin-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('确定删除此打卡记录吗？')) return;
+            fetch('/api/checkin/records/' + this.dataset.id + '/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) location.reload();
+                else alert(data.error);
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
