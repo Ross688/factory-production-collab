@@ -1,0 +1,396 @@
+{% extends "base.html" %}
+{% block title %}物料管理 - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h4 class="mb-0"><i class="bi bi-boxes"></i> 物料库存管理</h4>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMaterialModal">
+        <i class="bi bi-plus-circle"></i> 新增物料
+    </button>
+</div>
+
+<!-- 筛选 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">搜索物料</label>
+                <input type="text" name="search" class="form-control" placeholder="物料名称" value="{{ search }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">类别筛选</label>
+                <select name="category" class="form-select">
+                    <option value="">全部</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100"><i class="bi bi-search"></i> 筛选</button>
+            </div>
+            <div class="col-md-2">
+                <a href="{{ url_for('material_list') }}" class="btn btn-outline-secondary w-100"><i class="bi bi-x-circle"></i> 重置</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 物料列表 -->
+{% if materials %}
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>物料名称</th>
+                <th>规格</th>
+                <th>类别</th>
+                <th>单位</th>
+                <th style="min-width: 100px;">当前库存</th>
+                <th>最低警戒</th>
+                <th style="min-width: 180px;">购进 <small class="text-muted">(入库)</small></th>
+                <th style="min-width: 180px;">消耗 <small class="text-muted">(出库)</small></th>
+                <th>备注</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in materials %}
+            <tr class="{% if m.min_stock > 0 and m.stock_qty <= m.min_stock %}table-danger{% endif %}">
+                <td><strong>{{ m.name }}</strong></td>
+                <td><small class="text-muted">{{ m.spec or '-' }}</small></td>
+                <td><span class="badge bg-info">{{ m.category }}</span></td>
+                <td>{{ m.unit }}</td>
+                <td>
+                    <span class="fw-bold fs-5 stock-display" id="stock-{{ m.id }}">
+                        {{ "%.0f"|format(m.stock_qty) if m.stock_qty == m.stock_qty|int else "%.1f"|format(m.stock_qty) }}
+                    </span>
+                    <small class="text-muted">{{ m.unit }}</small>
+                    {% if m.min_stock > 0 and m.stock_qty <= m.min_stock %}
+                    <i class="bi bi-exclamation-triangle-fill text-danger ms-1" title="库存不足!"></i>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if m.min_stock > 0 %}
+                    <span class="badge bg-warning">{{ "%.0f"|format(m.min_stock) }}</span>
+                    {% else %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="input-group input-group-sm">
+                        <input type="number" class="form-control qty-input purchase-qty" 
+                               id="purchase-qty-{{ m.id }}" placeholder="数量" min="0" step="1">
+                        <button class="btn btn-success stock-btn" data-id="{{ m.id }}" data-type="purchase">
+                            <i class="bi bi-plus-lg"></i> 购进
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    <div class="input-group input-group-sm">
+                        <input type="number" class="form-control qty-input consume-qty" 
+                               id="consume-qty-{{ m.id }}" placeholder="数量" min="0" step="1">
+                        <button class="btn btn-warning stock-btn" data-id="{{ m.id }}" data-type="consume">
+                            <i class="bi bi-dash-lg"></i> 消耗
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    <small class="text-muted">{{ m.note or '-' }}</small>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary edit-material-btn" 
+                                data-id="{{ m.id }}"
+                                data-name="{{ m.name }}"
+                                data-spec="{{ m.spec }}"
+                                data-unit="{{ m.unit }}"
+                                data-category="{{ m.category }}"
+                                data-min-stock="{{ m.min_stock }}"
+                                data-note="{{ m.note }}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-danger delete-material-btn" data-id="{{ m.id }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-box" style="font-size: 3rem;"></i>
+    <p class="mt-2">暂无物料数据</p>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMaterialModal">
+        <i class="bi bi-plus-circle"></i> 添加第一个物料
+    </button>
+</div>
+{% endif %}
+
+<!-- 新增物料模态框 -->
+<div class="modal fade" id="addMaterialModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 新增物料</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addMaterialForm">
+                    <div class="mb-3">
+                        <label class="form-label">物料名称 <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" required placeholder="如：彩盒、硬纸板、保利龙">
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">规格</label>
+                            <input type="text" name="spec" class="form-control" placeholder="如：30x20x5cm">
+                        </div>
+                        <div class="col">
+                            <label class="form-label">单位</label>
+                            <select name="unit" class="form-select">
+                                <option value="个">个</option>
+                                <option value="张">张</option>
+                                <option value="公斤">公斤</option>
+                                <option value="米">米</option>
+                                <option value="套">套</option>
+                                <option value="箱">箱</option>
+                                <option value="卷">卷</option>
+                                <option value="只">只</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">类别</label>
+                            <select name="category" class="form-select">
+                                <option value="包材">包材</option>
+                                <option value="五金">五金</option>
+                                <option value="电子">电子</option>
+                                <option value="辅料">辅料</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label class="form-label">初始库存</label>
+                            <input type="number" name="stock_qty" class="form-control" value="0" min="0">
+                        </div>
+                        <div class="col">
+                            <label class="form-label">最低警戒</label>
+                            <input type="number" name="min_stock" class="form-control" value="0" min="0">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea name="note" class="form-control" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveMaterialBtn"><i class="bi bi-check-lg"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑物料模态框 -->
+<div class="modal fade" id="editMaterialModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> 编辑物料</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editMaterialForm">
+                    <input type="hidden" name="material_id" id="edit_material_id">
+                    <div class="mb-3">
+                        <label class="form-label">物料名称 <span class="text-danger">*</span></label>
+                        <input type="text" name="name" id="edit_name" class="form-control" required>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">规格</label>
+                            <input type="text" name="spec" id="edit_spec" class="form-control">
+                        </div>
+                        <div class="col">
+                            <label class="form-label">单位</label>
+                            <select name="unit" id="edit_unit" class="form-select">
+                                <option value="个">个</option>
+                                <option value="张">张</option>
+                                <option value="公斤">公斤</option>
+                                <option value="米">米</option>
+                                <option value="套">套</option>
+                                <option value="箱">箱</option>
+                                <option value="卷">卷</option>
+                                <option value="只">只</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">类别</label>
+                            <select name="category" id="edit_category" class="form-select">
+                                <option value="包材">包材</option>
+                                <option value="五金">五金</option>
+                                <option value="电子">电子</option>
+                                <option value="辅料">辅料</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label class="form-label">最低警戒</label>
+                            <input type="number" name="min_stock" id="edit_min_stock" class="form-control" min="0">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea name="note" id="edit_note" class="form-control" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning" id="updateMaterialBtn"><i class="bi bi-check-lg"></i> 保存修改</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 购进/消耗操作
+    document.querySelectorAll('.stock-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const materialId = this.dataset.id;
+            const opType = this.dataset.type; // purchase or consume
+            const qtyInput = document.getElementById(opType + '-qty-' + materialId);
+            const qty = parseFloat(qtyInput.value);
+
+            if (!qty || qty <= 0) {
+                alert('请输入有效的数量');
+                return;
+            }
+
+            const typeLabel = opType === 'purchase' ? '购进' : '消耗';
+            if (!confirm(`确定${typeLabel} ${qty} 个吗？`)) return;
+
+            fetch('/api/material/' + materialId + '/stock', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({type: opType, quantity: qty})
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    // 更新库存显示
+                    const stockDisplay = document.getElementById('stock-' + materialId);
+                    const newQty = data.material.stock_qty;
+                    stockDisplay.textContent = Number.isInteger(newQty) ? newQty : newQty.toFixed(1);
+                    qtyInput.value = '';
+                    // 重新加载页面以更新颜色
+                    location.reload();
+                } else {
+                    alert(data.error || '操作失败');
+                }
+            })
+            .catch(function() { alert('网络错误'); });
+        });
+    });
+
+    // 保存新增物料
+    document.getElementById('saveMaterialBtn').addEventListener('click', function() {
+        const form = document.getElementById('addMaterialForm');
+        const data = {
+            name: form.querySelector('[name="name"]').value,
+            spec: form.querySelector('[name="spec"]').value,
+            unit: form.querySelector('[name="unit"]').value,
+            category: form.querySelector('[name="category"]').value,
+            stock_qty: parseFloat(form.querySelector('[name="stock_qty"]').value) || 0,
+            min_stock: parseFloat(form.querySelector('[name="min_stock"]').value) || 0,
+            note: form.querySelector('[name="note"]').value,
+        };
+        if (!data.name) { alert('请输入物料名称'); return; }
+
+        fetch('/api/material/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(function(resp) { return resp.json(); })
+        .then(function(result) {
+            if (result.success) {
+                location.reload();
+            } else {
+                alert(result.error || '添加失败');
+            }
+        });
+    });
+
+    // 编辑物料 - 弹出编辑框
+    document.querySelectorAll('.edit-material-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.getElementById('edit_material_id').value = this.dataset.id;
+            document.getElementById('edit_name').value = this.dataset.name;
+            document.getElementById('edit_spec').value = this.dataset.spec;
+            document.getElementById('edit_unit').value = this.dataset.unit;
+            document.getElementById('edit_category').value = this.dataset.category;
+            document.getElementById('edit_min_stock').value = this.dataset.minStock;
+            document.getElementById('edit_note').value = this.dataset.note;
+            new bootstrap.Modal(document.getElementById('editMaterialModal')).show();
+        });
+    });
+
+    // 保存编辑物料
+    document.getElementById('updateMaterialBtn').addEventListener('click', function() {
+        const materialId = document.getElementById('edit_material_id').value;
+        const data = {
+            name: document.getElementById('edit_name').value,
+            spec: document.getElementById('edit_spec').value,
+            unit: document.getElementById('edit_unit').value,
+            category: document.getElementById('edit_category').value,
+            min_stock: parseFloat(document.getElementById('edit_min_stock').value) || 0,
+            note: document.getElementById('edit_note').value,
+        };
+        if (!data.name) { alert('请输入物料名称'); return; }
+
+        fetch('/api/material/' + materialId + '/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(function(resp) { return resp.json(); })
+        .then(function(result) {
+            if (result.success) {
+                location.reload();
+            } else {
+                alert(result.error || '更新失败');
+            }
+        });
+    });
+
+    // 删除物料
+    document.querySelectorAll('.delete-material-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('确定要删除此物料吗？')) return;
+            const materialId = this.dataset.id;
+            fetch('/api/material/' + materialId + '/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(result) {
+                if (result.success) location.reload();
+                else alert(result.error);
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
