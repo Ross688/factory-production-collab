@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}生产驾驶舱 - {{ super() }}{% endblock %}
+{% block body_class %}dashboard-page{% endblock %}
+
+{% block content %}
+{% set order_base = total if total > 0 else 1 %}
+{% set completed_pct = ((completed / order_base) * 100)|int %}
+{% set progress_pct = ((in_progress / order_base) * 100)|int %}
+{% set pending_pct = ((pending / order_base) * 100)|int %}
+<div class="viz-dashboard">
+    <section class="viz-hero">
+        <div class="viz-topline"><a href="{{ url_for('index') }}" class="viz-back"><i class="bi bi-arrow-left"></i></a><div><span class="viz-kicker">SHOP FLOOR / LIVE VIEW</span><h1>生产驾驶舱</h1></div><div class="viz-actions"><span class="live-pill"><i></i> 实时</span><a href="{{ url_for('order_create') }}" class="viz-icon-button" aria-label="新建订单"><i class="bi bi-plus-lg"></i></a></div></div>
+        <div class="viz-hero-copy"><span class="viz-kicker">TODAY'S OPERATIONS</span><h2>现场运行状态</h2><p>用一眼可读的指标，快速掌握订单、产线和物料变化。</p></div>
+        <div class="viz-score-row"><div class="viz-score"><strong>{{ completed_pct }}<small>%</small></strong><span>订单完成率</span></div><div class="viz-hero-stat"><strong>{{ in_progress }}</strong><span>进行中工单</span></div><div class="viz-hero-stat"><strong>{{ low_stock_materials|length }}</strong><span>物料预警</span></div><div class="viz-hero-stat"><strong>{{ completed }}</strong><span>今日完成</span></div></div>
+    </section>
+
+    <div class="viz-content">
+        <div class="viz-mode-tabs"><a class="active" href="{{ url_for('dashboard') }}">总览</a><a href="{{ url_for('index') }}">工单</a><a href="{{ url_for('capacity_plan') }}">产能</a><a href="{{ url_for('material_list') }}">物料</a></div>
+        <section class="viz-grid">
+            <article class="viz-card order-visual"><div class="viz-card-head"><div><span class="viz-kicker">WORK ORDERS</span><h3>工单进度</h3></div><i class="bi bi-bar-chart-line"></i></div><div class="segmented-progress" aria-label="订单状态分布"><span class="complete" style="width:{{ completed_pct }}%"></span><span class="running" style="width:{{ progress_pct }}%"></span><span class="pending" style="width:{{ pending_pct }}%"></span></div><div class="viz-legend"><span><i class="legend-dot complete"></i>已完成 <b>{{ completed }}</b></span><span><i class="legend-dot running"></i>生产中 <b>{{ in_progress }}</b></span><span><i class="legend-dot pending"></i>待处理 <b>{{ pending }}</b></span></div><a class="viz-card-link" href="{{ url_for('index') }}">进入工单中心 <i class="bi bi-arrow-up-right"></i></a></article>
+            <article class="viz-card line-visual"><div class="viz-card-head"><div><span class="viz-kicker">PRODUCTION LINE</span><h3>生产线状态</h3></div><span class="status-badge success">运行中</span></div><div class="line-row"><div class="line-label"><span>冲压线</span><b>92%</b></div><div class="line-track"><span style="width:92%"></span></div></div><div class="line-row"><div class="line-label"><span>焊接线</span><b>78%</b></div><div class="line-track"><span style="width:78%"></span></div></div><div class="line-row"><div class="line-label"><span>总装线</span><b>64%</b></div><div class="line-track"><span style="width:64%"></span></div></div><div class="line-foot"><i class="bi bi-lightning-charge-fill"></i> 当前产能利用率 <strong>81%</strong></div></article>
+            <article class="viz-card alert-visual"><div class="viz-card-head"><div><span class="viz-kicker">ATTENTION</span><h3>现场提醒</h3></div><i class="bi bi-bell"></i></div><a class="alert-row warning" href="{{ url_for('material_list') }}"><span class="alert-icon"><i class="bi bi-box-seam"></i></span><span><strong>{{ low_stock_materials|length }} 项物料库存偏低</strong><small>请及时补充安全库存</small></span><i class="bi bi-chevron-right"></i></a><a class="alert-row danger" href="{{ url_for('dashboard') }}"><span class="alert-icon"><i class="bi bi-shield-exclamation"></i></span><span><strong>1 项质量问题待确认</strong><small>需要质检人员处理</small></span><i class="bi bi-chevron-right"></i></a><a class="viz-card-link" href="{{ url_for('material_list') }}">查看全部提醒 <i class="bi bi-arrow-up-right"></i></a></article>
+            <article class="viz-card inventory-visual"><div class="viz-card-head"><div><span class="viz-kicker">INVENTORY</span><h3>物料概览</h3></div><i class="bi bi-boxes"></i></div><div class="inventory-score"><strong>{{ total_stock_value|int }}</strong><span>当前库存总数</span></div><div class="inventory-meta"><span><b>{{ total_materials }}</b>物料种类</span><span class="danger-text"><b>{{ low_stock_materials|length }}</b>库存不足</span></div><a class="viz-card-link" href="{{ url_for('material_list') }}">打开物料管理 <i class="bi bi-arrow-up-right"></i></a></article>
+        </section>
+
+        <section class="viz-feed"><div class="viz-section-head"><div><span class="viz-kicker">RECENT ACTIVITY</span><h3>最近生产动态</h3></div><a href="{{ url_for('index') }}">查看全部</a></div>{% if recent_orders %}<div class="activity-list">{% for order in recent_orders %}<a class="activity-row" href="{{ url_for('order_detail', order_id=order.id) }}"><span class="activity-status {{ 'complete' if order.current_status() == 'completed' else 'running' if order.current_status() == 'in_progress' else 'pending' }}"></span><span class="activity-main"><strong>{{ order.order_no }}</strong><small>{{ order.product_name }} · {{ order.customer_name }}</small></span><span class="activity-state">{{ get_status_label(order.current_status()) }}</span><i class="bi bi-chevron-right"></i></a>{% endfor %}</div>{% else %}<div class="viz-empty"><i class="bi bi-activity"></i><p>还没有生产动态</p></div>{% endif %}</section>
+    </div>
+</div>
+{% endblock %}
