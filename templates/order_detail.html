@@ -1,0 +1,490 @@
+{% extends "base.html" %}
+{% block title %}订单详情 - {{ order.order_no }} - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">订单列表</a></li>
+                <li class="breadcrumb-item active">{{ order.order_no }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- 订单基本信息卡片 -->
+<div class="card mb-4">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-file-text"></i> {{ order.order_no }}
+            <span class="badge bg-{{ get_status_class(order.current_status()) }} ms-2">
+                {{ get_status_label(order.current_status()) }}
+            </span>
+        </h5>
+        <div>
+            <a href="{{ url_for('order_edit', order_id=order.id) }}" class="btn btn-sm btn-outline-light">
+                <i class="bi bi-pencil"></i> 编辑
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                <i class="bi bi-trash"></i> 删除
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <label class="text-muted small">客户名称</label>
+                <p class="fw-bold">{{ order.customer_name }}</p>
+            </div>
+            <div class="col-md-3">
+                <label class="text-muted small">产品名称</label>
+                <p class="fw-bold">{{ order.product_name }}</p>
+            </div>
+            <div class="col-md-2">
+                <label class="text-muted small">数量</label>
+                <p class="fw-bold">{{ order.quantity }}</p>
+            </div>
+            <div class="col-md-2">
+                <label class="text-muted small">下单日期</label>
+                <p>{{ order.order_date or '-' }}</p>
+            </div>
+            <div class="col-md-2">
+                <label class="text-muted small">交货日期</label>
+                <p>{{ order.delivery_date or '-' }}</p>
+            </div>
+        </div>
+        {% if order.notes %}
+        <div class="row mt-2">
+            <div class="col">
+                <label class="text-muted small">备注</label>
+                <p class="mb-0">{{ order.notes }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 流程进度条 -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-graph-up-arrow"></i> 整体进度
+    </div>
+    <div class="card-body">
+        {% set total = order.steps|length %}
+        {% set done = order.steps|selectattr('status', 'equalto', 'completed')|list|length %}
+        {% set skipped = order.steps|selectattr('status', 'equalto', 'skipped')|list|length %}
+        {% set progress = ((done + skipped) / total * 100)|int %}
+        <div class="progress" style="height: 25px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                 style="width: {{ progress }}%">
+                {{ done + skipped }}/{{ total }} 步骤完成 ({{ progress }}%)
+            </div>
+        </div>
+        <div class="mt-2 text-muted small">
+            <span class="badge bg-success">{{ done }} 已完成</span>
+            <span class="badge bg-warning">{{ skipped }} 已跳过</span>
+            <span class="badge bg-primary">{{ order.steps|selectattr('status', 'equalto', 'in_progress')|list|length }} 进行中</span>
+            <span class="badge bg-secondary">{{ order.steps|selectattr('status', 'equalto', 'pending')|list|length }} 待处理</span>
+        </div>
+    </div>
+</div>
+
+<!-- 按类别分组的流程步骤 -->
+{% for category, steps in steps_by_category.items() %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center
+        {% if category == 'sampling' %}bg-info bg-opacity-10
+        {% elif category == 'production' %}bg-success bg-opacity-10
+        {% elif category == 'inspection' %}bg-warning bg-opacity-10
+        {% elif category == 'testing' %}bg-danger bg-opacity-10
+        {% else %}bg-light{% endif %}">
+        <h6 class="mb-0">
+            <i class="bi 
+                {% if category == 'sampling' %}bi-eyedropper
+                {% elif category == 'production' %}bi-gear
+                {% elif category == 'inspection' %}bi-clipboard-check
+                {% elif category == 'testing' %}bi-flask
+                {% else %}bi-box{% endif %}">
+            </i>
+            {{ get_category_label(category) }}
+        </h6>
+        <span class="badge bg-secondary">{{ steps|length }} 项</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 50px;">#</th>
+                        <th style="width: 160px;">步骤名称</th>
+                        <th style="width: 120px;">类型</th>
+                        <th style="width: 100px;">状态</th>
+                        <th style="width: 110px;">计划日期</th>
+                        <th style="width: 110px;">完成日期</th>
+                        <th>负责人</th>
+                        <th>备注</th>
+                        <th style="width: 280px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for step in steps %}
+                    <tr class="step-row" data-step-id="{{ step.id }}">
+                        <td>{{ step.seq }}</td>
+                        <td>
+                            <strong>{{ step.step_name }}</strong>
+                        </td>
+                        <td>
+                            {% if step.step_type is not none %}
+                            <select class="form-select form-select-sm step-type-select" 
+                                    data-step-id="{{ step.id }}"
+                                    {% if step.status == 'completed' %}disabled{% endif %}>
+                                <option value="">--</option>
+                                <option value="自己做" {% if step.step_type == '自己做' %}selected{% endif %}>自己做</option>
+                                <option value="外面做" {% if step.step_type == '外面做' %}selected{% endif %}>外面做</option>
+                                <option value="不需要" {% if step.step_type == '不需要' %}selected{% endif %}>不需要</option>
+                            </select>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ get_status_class(step.status) }} status-badge">
+                                {{ get_status_label(step.status) }}
+                            </span>
+                        </td>
+                        <td>
+                            <input type="date" class="form-control form-control-sm planned-date-input" 
+                                   value="{{ step.planned_date }}" data-step-id="{{ step.id }}"
+                                   {% if step.status == 'completed' %}disabled{% endif %}>
+                        </td>
+                        <td>
+                            {% if step.completed_date %}
+                                {{ step.completed_date }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm assignee-input" 
+                                   value="{{ step.assignee }}" placeholder="负责人" data-step-id="{{ step.id }}"
+                                   {% if step.status == 'completed' %}disabled{% endif %}>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm notes-input" 
+                                   value="{{ step.notes }}" placeholder="备注" data-step-id="{{ step.id }}"
+                                   {% if step.status == 'completed' %}disabled{% endif %}>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                {% if step.status == 'pending' %}
+                                <button class="btn btn-primary step-status-btn" 
+                                        data-step-id="{{ step.id }}" data-status="in_progress">
+                                    <i class="bi bi-play-fill"></i> 开始
+                                </button>
+                                {% elif step.status == 'in_progress' %}
+                                <button class="btn btn-success step-status-btn"
+                                        data-step-id="{{ step.id }}" data-status="completed">
+                                    <i class="bi bi-check-lg"></i> 完成
+                                </button>
+                                <button class="btn btn-secondary step-status-btn"
+                                        data-step-id="{{ step.id }}" data-status="pending">
+                                    <i class="bi bi-arrow-counterclockwise"></i> 撤回
+                                </button>
+                                {% elif step.status == 'completed' %}
+                                <button class="btn btn-warning step-status-btn"
+                                        data-step-id="{{ step.id }}" data-status="in_progress">
+                                    <i class="bi bi-arrow-counterclockwise"></i> 改回/撤回
+                                </button>
+                                {% endif %}
+                                {% if step.status != 'skipped' %}
+                                <button class="btn btn-outline-secondary step-status-btn"
+                                        data-step-id="{{ step.id }}" data-status="skipped">
+                                    <i class="bi bi-forward"></i> 跳过
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- 添加自定义步骤 -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-plus-circle"></i> 添加自定义步骤
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('order_add_step', order_id=order.id) }}" class="row g-2">
+            <div class="col-md-5">
+                <input type="text" name="step_name" class="form-control" placeholder="步骤名称（如：第三方检测）" required>
+            </div>
+            <div class="col-md-3">
+                <select name="category" class="form-select">
+                    <option value="common">准备阶段</option>
+                    <option value="sampling">打样阶段</option>
+                    <option value="production">生产阶段</option>
+                    <option value="inspection">验货</option>
+                    <option value="testing">测试</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">
+                    <i class="bi bi-plus"></i> 添加
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 物料清单 -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-boxes"></i> 物料清单</h5>
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addOrderMaterialModal">
+            <i class="bi bi-plus"></i> 添加物料
+        </button>
+    </div>
+    <div class="card-body p-0">
+        {% set order_materials = order.materials %}
+        {% if order_materials %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>物料名称</th>
+                        <th>需求量</th>
+                        <th>单位</th>
+                        <th>备注</th>
+                        <th style="width: 80px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="orderMaterialTableBody">
+                    {% for om in order_materials %}
+                    <tr>
+                        <td><strong>{{ om.material.name }}</strong></td>
+                        <td>{{ "%.0f"|format(om.required_qty) }}</td>
+                        <td>{{ om.material.unit }}</td>
+                        <td><small class="text-muted">{{ om.note or '-' }}</small></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger delete-order-material-btn" data-id="{{ om.id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-3 text-muted">
+            <i class="bi bi-box" style="font-size: 2rem;"></i>
+            <p class="mt-1 mb-0">暂未添加物料</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加订单物料模态框 -->
+<div class="modal fade" id="addOrderMaterialModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 为订单添加物料</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addOrderMaterialForm">
+                    <div class="mb-3">
+                        <label class="form-label">选择物料</label>
+                        <select name="material_id" class="form-select" required>
+                            <option value="">-- 请选择 --</option>
+                            {% for m in materials %}
+                            <option value="{{ m.id }}">{{ m.name }} ({{ m.category }}) - 库存: {{ "%.0f"|format(m.stock_qty) }} {{ m.unit }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">需求量</label>
+                        <input type="number" name="required_qty" class="form-control" value="1" min="1" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveOrderMaterialBtn"><i class="bi bi-check-lg"></i> 添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认模态框 -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除订单 <strong>{{ order.order_no }}</strong> 吗？</p>
+                <p class="text-danger small">此操作将标记订单为已删除状态。</p>
+            </div>
+            <div class="modal-footer">
+                <form method="POST" action="{{ url_for('order_delete', order_id=order.id) }}">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger">确认删除</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 步骤状态更新按钮
+    document.querySelectorAll('.step-status-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const stepId = this.dataset.stepId;
+            const status = this.dataset.status;
+            
+            fetch('/api/step/' + stepId + '/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status: status})
+            })
+            .then(function(resp) {
+                if (resp.ok) {
+                    location.reload();
+                } else {
+                    alert('更新失败，请重试');
+                }
+            })
+            .catch(function() {
+                alert('网络错误');
+            });
+        });
+    });
+
+    // 步骤类型选择变更自动保存
+    document.querySelectorAll('.step-type-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            const stepId = this.dataset.stepId;
+            const value = this.value;
+            
+            fetch('/api/step/' + stepId + '/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({step_type: value})
+            })
+            .then(function(resp) {
+                if (!resp.ok) alert('保存失败');
+            });
+        });
+    });
+
+    // 负责人输入自动保存
+    document.querySelectorAll('.assignee-input').forEach(function(inp) {
+        inp.addEventListener('change', function() {
+            const stepId = this.dataset.stepId;
+            const value = this.value;
+            
+            fetch('/api/step/' + stepId + '/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({assignee: value})
+            })
+            .then(function(resp) {
+                if (!resp.ok) alert('保存失败');
+            });
+        });
+    });
+
+    // 备注输入自动保存
+    document.querySelectorAll('.notes-input').forEach(function(inp) {
+        inp.addEventListener('change', function() {
+            const stepId = this.dataset.stepId;
+            const value = this.value;
+            
+            fetch('/api/step/' + stepId + '/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({notes: value})
+            })
+            .then(function(resp) {
+                if (!resp.ok) alert('保存失败');
+            });
+        });
+    });
+
+    // 计划日期自动保存
+    document.querySelectorAll('.planned-date-input').forEach(function(inp) {
+        inp.addEventListener('change', function() {
+            const stepId = this.dataset.stepId;
+            const value = this.value;
+            
+            fetch('/api/step/' + stepId + '/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({planned_date: value})
+            })
+            .then(function(resp) {
+                if (!resp.ok) alert('保存失败');
+            });
+        });
+    });
+
+    // 为订单添加物料
+    const saveOrderMaterialBtn = document.getElementById('saveOrderMaterialBtn');
+    if (saveOrderMaterialBtn) {
+        saveOrderMaterialBtn.addEventListener('click', function() {
+            const form = document.getElementById('addOrderMaterialForm');
+            const materialId = form.querySelector('[name="material_id"]').value;
+            const requiredQty = parseFloat(form.querySelector('[name="required_qty"]').value) || 0;
+            
+            if (!materialId) { alert('请选择物料'); return; }
+            if (requiredQty <= 0) { alert('请填写需求量'); return; }
+
+            fetch('/api/order/{{ order.id }}/material/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({material_id: materialId, required_qty: requiredQty})
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.error || '添加失败');
+                }
+            })
+            .catch(function() { alert('网络错误'); });
+        });
+    }
+
+    // 删除订单物料
+    document.querySelectorAll('.delete-order-material-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('确定要移除该物料吗？')) return;
+            const omId = this.dataset.id;
+            fetch('/api/order/material/' + omId + '/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success) location.reload();
+                else alert(data.error);
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
