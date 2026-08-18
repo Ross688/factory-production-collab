@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+{% block title %}产能预期 - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h4 class="mb-0"><i class="bi bi-graph-up"></i> 产能预期计算</h4>
+    <a href="{{ url_for('checkin_page') }}" class="btn btn-success">
+        <i class="bi bi-clipboard-check"></i> 打卡同步
+    </a>
+</div>
+
+<div class="row">
+    <!-- 计算器 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-calculator"></i> 多工序产能计算
+            </div>
+            <div class="card-body">
+                <!-- 选择订单 -->
+                <div class="mb-3">
+                    <label class="form-label">关联订单（可选）</label>
+                    <select class="form-select" id="cap_order_id">
+                        <option value="">-- 不关联订单，手动输入 --</option>
+                        {% for o in orders %}
+                        <option value="{{ o.id }}" data-qty="{{ o.quantity }}">{{ o.order_no }} - {{ o.product_name }} ({{ o.quantity }}件)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">产品名称</label>
+                    <input type="text" class="form-control" id="cap_product_name" placeholder="如：机械表芯">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">起始日期</label>
+                    <input type="date" class="form-control" id="cap_start_date">
+                </div>
+
+                <hr>
+                <h6 class="fw-bold"><i class="bi bi-layers"></i> 工序列表 <button class="btn btn-sm btn-outline-primary ms-2" id="addSegmentBtn"><i class="bi bi-plus"></i> 添加工序</button></h6>
+
+                <!-- 工序列表容器 -->
+                <div id="segmentContainer">
+                    <!-- 默认第一行工序 -->
+                    <div class="segment-row card mb-2 p-2 border-success">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="badge bg-success" style="font-size:0.9rem;">工序 #1</span>
+                            <button class="btn btn-sm btn-outline-danger remove-segment-btn" style="display:none;"><i class="bi bi-x"></i></button>
+                        </div>
+                        <div class="row g-1">
+                            <div class="col-12 mb-1">
+                                <input type="text" class="form-control form-control-sm seg-name" placeholder="工序名称（如：机芯生产）">
+                            </div>
+                            <div class="col-4">
+                                <input type="number" class="form-control form-control-sm seg-qty" placeholder="数量" min="1">
+                            </div>
+                            <div class="col-4">
+                                <input type="number" class="form-control form-control-sm seg-rate" placeholder="产能/人/小时" min="0.1" step="0.1">
+                            </div>
+                            <div class="col-4">
+                                <input type="number" class="form-control form-control-sm seg-workers" placeholder="人数" value="1" min="1">
+                            </div>
+                            <div class="col-6">
+                                <input type="number" class="form-control form-control-sm seg-hours" placeholder="小时/天" value="8" min="1" max="24">
+                            </div>
+                            <div class="col-6">
+                                <input type="text" class="form-control form-control-sm seg-daily-output" placeholder="日产能" readonly style="background:#f8f9fa;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 计算按钮 -->
+                <button class="btn btn-outline-success w-100 mt-2" id="batchCalculateBtn">
+                    <i class="bi bi-calculator"></i> 计算全部工序
+                </button>
+
+                <!-- 累计结果 -->
+                <div id="batchResultArea" class="mt-3 p-3 bg-light rounded d-none">
+                    <h6 class="fw-bold text-success"><i class="bi bi-check-circle"></i> 累计计算结果</h6>
+                    <div class="row text-center mb-3">
+                        <div class="col-4">
+                            <div class="border rounded p-2 bg-white">
+                                <small class="text-muted">累计天数</small>
+                                <p class="h4 mb-0 text-danger fw-bold" id="result_total_days">-</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2 bg-white">
+                                <small class="text-muted">起始日期</small>
+                                <p class="h5 mb-0 text-muted" id="result_start_date">-</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2 bg-white">
+                                <small class="text-muted">预计完成</small>
+                                <p class="h5 mb-0 text-info fw-bold" id="result_end_date">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 各工序明细 -->
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>工序</th>
+                                    <th>数量</th>
+                                    <th>产能/h</th>
+                                    <th>人数</th>
+                                    <th>日产能</th>
+                                    <th>天数</th>
+                                </tr>
+                            </thead>
+                            <tbody id="segmentResultBody"></tbody>
+                        </table>
+                    </div>
+
+                    <button class="btn btn-primary mt-2 w-100" id="batchSaveBtn">
+                        <i class="bi bi-save"></i> 保存全部工序方案
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史记录 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> 历史产能记录</h5>
+                <div style="max-width:250px;">
+                    <select class="form-select form-select-sm" id="capOrderFilter" onchange="window.location='?order_id='+this.value">
+                        <option value="">全部订单</option>
+                        {% for o in orders %}
+                        <option value="{{ o.id }}" {% if selected_order_id and selected_order_id|string == o.id|string %}selected{% endif %}>{{ o.order_no }} - {{ o.product_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if plans %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>订单</th>
+                                <th>产品 / 工序</th>
+                                <th>总数</th>
+                                <th>产能</th>
+                                <th>日产能</th>
+                                <th>天数</th>
+                                <th>已完成</th>
+                                <th>预计完成</th>
+                                <th style="width:60px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in plans %}
+                            <tr>
+                                <td>
+                                    {% if p.order_id %}
+                                    <a href="{{ url_for('order_detail', order_id=p.order_id) }}" class="text-decoration-none">
+                                        <strong>{{ p.order.order_no if p.order else '--' }}</strong>
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted">--</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <strong>{{ p.product_name or '--' }}</strong>
+                                    {% if p.note %}<br><small class="text-muted">工序: {{ p.note }}</small>{% endif %}
+                                </td>
+                                <td>{{ "%.0f"|format(p.total_qty) }}</td>
+                                <td>{{ p.hourly_rate }}/h</td>
+                                <td class="text-primary fw-bold">{{ "%.0f"|format(p.daily_output) }}</td>
+                                <td class="text-success fw-bold">{{ "%.1f"|format(p.est_days) }}天</td>
+                                <td class="fw-bold {% if p.completed_qty and p.completed_qty > 0 %}text-success{% else %}text-muted{% endif %}">
+                                    {% if p.completed_qty and p.completed_qty > 0 %}
+                                    {{ "%.0f"|format(p.completed_qty) }} ✅
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if p.est_end_date %}
+                                    <span class="badge bg-info">{{ p.est_end_date }}</span>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger delete-capacity-btn" data-id="{{ p.id }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-graph-up" style="font-size: 3rem;"></i>
+                    <p class="mt-2">暂未保存产能方案</p>
+                    <p class="small">添加多个工序并计算产能，然后保存即可</p>
+                    <p class="small text-info">💡 也可通过打卡功能同步已完成数量</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var segmentIndex = 1;
+
+    // 选择订单自动填入
+    document.getElementById('cap_order_id').addEventListener('change', function() {
+        var selected = this.options[this.selectedIndex];
+        if (selected && selected.dataset.qty) {
+            var text = selected.text.split(' - ');
+            if (text.length > 1) document.getElementById('cap_product_name').value = text[1].split(' (')[0];
+        }
+    });
+
+    // 添加工序
+    document.getElementById('addSegmentBtn').addEventListener('click', function() {
+        segmentIndex++;
+        var container = document.getElementById('segmentContainer');
+        var row = document.createElement('div');
+        row.className = 'segment-row card mb-2 p-2 border-info';
+        row.innerHTML =
+            '<div class="d-flex justify-content-between align-items-center mb-1">' +
+                '<span class="badge bg-info" style="font-size:0.9rem;">工序 #' + segmentIndex + '</span>' +
+                '<button class="btn btn-sm btn-outline-danger remove-segment-btn"><i class="bi bi-x"></i></button>' +
+            '</div>' +
+            '<div class="row g-1">' +
+                '<div class="col-12 mb-1">' +
+                    '<input type="text" class="form-control form-control-sm seg-name" placeholder="工序名称（如：组装）">' +
+                '</div>' +
+                '<div class="col-4">' +
+                    '<input type="number" class="form-control form-control-sm seg-qty" placeholder="数量" min="1">' +
+                '</div>' +
+                '<div class="col-4">' +
+                    '<input type="number" class="form-control form-control-sm seg-rate" placeholder="产能/人/小时" min="0.1" step="0.1">' +
+                '</div>' +
+                '<div class="col-4">' +
+                    '<input type="number" class="form-control form-control-sm seg-workers" placeholder="人数" value="1" min="1">' +
+                '</div>' +
+                '<div class="col-6">' +
+                    '<input type="number" class="form-control form-control-sm seg-hours" placeholder="小时/天" value="8" min="1" max="24">' +
+                '</div>' +
+                '<div class="col-6">' +
+                    '<input type="text" class="form-control form-control-sm seg-daily-output" placeholder="日产能" readonly style="background:#f8f9fa;">' +
+                '</div>' +
+            '</div>';
+        container.appendChild(row);
+        bindRemoveButton(row.querySelector('.remove-segment-btn'));
+        bindAutoCalc(row);
+    });
+
+    // 删除工序
+    function bindRemoveButton(btn) {
+        btn.addEventListener('click', function() {
+            var rows = document.querySelectorAll('.segment-row');
+            if (rows.length <= 1) { alert('至少保留一个工序'); return; }
+            this.closest('.segment-row').remove();
+            renumberSegments();
+        });
+    }
+
+    function renumberSegments() {
+        var rows = document.querySelectorAll('.segment-row');
+        rows.forEach(function(row, idx) {
+            var badge = row.querySelector('.badge');
+            if (badge) badge.textContent = '工序 #' + (idx + 1);
+        });
+    }
+
+    // 自动计算每行日产能
+    function bindAutoCalc(row) {
+        var qty = row.querySelector('.seg-qty');
+        var rate = row.querySelector('.seg-rate');
+        var workers = row.querySelector('.seg-workers');
+        var hours = row.querySelector('.seg-hours');
+        var output = row.querySelector('.seg-daily-output');
+
+        function calcDaily() {
+            var r = parseFloat(rate.value) || 0;
+            var w = parseFloat(workers.value) || 1;
+            var h = parseFloat(hours.value) || 8;
+            if (r > 0) {
+                output.value = (r * w * h).toFixed(1) + ' 件/天';
+            } else {
+                output.value = '';
+            }
+        }
+        [qty, rate, workers, hours].forEach(function(el) {
+            if (el) el.addEventListener('input', calcDaily);
+        });
+    }
+
+    // 绑定已有行
+    document.querySelectorAll('.segment-row').forEach(function(row) {
+        bindRemoveButton(row.querySelector('.remove-segment-btn'));
+        bindAutoCalc(row);
+    });
+
+    // ==================== 批量计算 ====================
+    document.getElementById('batchCalculateBtn').addEventListener('click', function() {
+        var segments = [];
+        var rows = document.querySelectorAll('.segment-row');
+        rows.forEach(function(row) {
+            var name = row.querySelector('.seg-name').value || '未命名';
+            var qty = parseFloat(row.querySelector('.seg-qty').value) || 0;
+            var rate = parseFloat(row.querySelector('.seg-rate').value) || 0;
+            var workers = parseFloat(row.querySelector('.seg-workers').value) || 1;
+            var hours = parseFloat(row.querySelector('.seg-hours').value) || 8;
+            segments.push({
+                process_name: name,
+                total_qty: qty,
+                hourly_rate: rate,
+                workers: workers,
+                hours_per_day: hours,
+            });
+        });
+
+        if (segments.length === 0) { alert('请添加工序'); return; }
+
+        var hasData = segments.some(function(s) { return s.total_qty > 0 && s.hourly_rate > 0; });
+        if (!hasData) { alert('请至少填写一个工序的数量和产能'); return; }
+
+        var startDate = document.getElementById('cap_start_date').value;
+
+        fetch('/api/capacity/batch/calculate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({segments: segments, start_date: startDate})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success) { alert(data.error); return; }
+
+            document.getElementById('result_total_days').textContent = data.cumulative_days + ' 天';
+            document.getElementById('result_start_date').textContent = data.overall_start_date || '未设置';
+            document.getElementById('result_end_date').textContent = data.overall_end_date || '未设置';
+            document.getElementById('batchResultArea').classList.remove('d-none');
+
+            // 填充明细表
+            var tbody = document.getElementById('segmentResultBody');
+            tbody.innerHTML = '';
+            data.segments.forEach(function(seg) {
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td><strong>' + seg.process_name + '</strong></td>' +
+                    '<td>' + seg.total_qty + '</td>' +
+                    '<td>' + seg.hourly_rate + '/h</td>' +
+                    '<td>' + seg.workers + '人</td>' +
+                    '<td class="text-primary fw-bold">' + seg.daily_output + '</td>' +
+                    '<td class="text-success fw-bold">' + seg.est_days_ceil + '天</td>';
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(function() { alert('网络错误'); });
+    });
+
+    // ==================== 批量保存 ====================
+    document.getElementById('batchSaveBtn').addEventListener('click', function() {
+        var orderId = document.getElementById('cap_order_id').value || null;
+        var productName = document.getElementById('cap_product_name').value || '';
+        var startDate = document.getElementById('cap_start_date').value || '';
+
+        var rows = document.querySelectorAll('.segment-row');
+        var allData = [];
+        rows.forEach(function(row) {
+            var name = row.querySelector('.seg-name').value || '未命名';
+            var qty = parseFloat(row.querySelector('.seg-qty').value) || 0;
+            var rate = parseFloat(row.querySelector('.seg-rate').value) || 0;
+            var workers = parseFloat(row.querySelector('.seg-workers').value) || 1;
+            var hours = parseFloat(row.querySelector('.seg-hours').value) || 8;
+            if (qty > 0 && rate > 0) {
+                allData.push({
+                    process_name: name,
+                    total_qty: qty,
+                    hourly_rate: rate,
+                    workers: workers,
+                    hours_per_day: hours,
+                });
+            }
+        });
+
+        if (allData.length === 0) { alert('没有可保存的工序数据'); return; }
+
+        // 逐个保存
+        var savePromises = allData.map(function(seg) {
+            return fetch('/api/capacity/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    order_id: orderId,
+                    product_name: productName + ' - ' + seg.process_name,
+                    total_qty: seg.total_qty,
+                    hourly_rate: seg.hourly_rate,
+                    workers: seg.workers,
+                    hours_per_day: seg.hours_per_day,
+                    start_date: startDate,
+                    note: seg.process_name,
+                })
+            }).then(function(r) { return r.json(); });
+        });
+
+        Promise.all(savePromises).then(function(results) {
+            var ok = results.every(function(r) { return r.success; });
+            if (ok) {
+                location.reload();
+            } else {
+                alert('部分保存失败，请重试');
+            }
+        }).catch(function() { alert('网络错误'); });
+    });
+
+    // 删除产能记录
+    document.querySelectorAll('.delete-capacity-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('确定要删除此产能记录吗？')) return;
+            fetch('/api/capacity/delete/' + this.dataset.id, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success) location.reload();
+                else alert(data.error);
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
