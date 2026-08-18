@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}库存流水 - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h4 class="mb-0"><i class="bi bi-clock-history"></i> 库存出入库流水</h4>
+    <a href="{{ url_for('material_list') }}" class="btn btn-outline-primary">
+        <i class="bi bi-boxes"></i> 返回物料管理
+    </a>
+</div>
+
+<!-- 筛选 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">按物料筛选</label>
+                <select name="material_id" class="form-select" onchange="this.form.submit()">
+                    <option value="">全部物料</option>
+                    {% for m in materials %}
+                    <option value="{{ m.id }}" {% if selected_material_id|string == m.id|string %}selected{% endif %}>
+                        {{ m.name }} ({{ m.category }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 流水列表 -->
+<div class="card">
+    <div class="card-body p-0">
+        {% if records %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>时间</th>
+                        <th>物料</th>
+                        <th>操作类型</th>
+                        <th>数量</th>
+                        <th>操作前库存</th>
+                        <th>操作后库存</th>
+                        <th>操作人</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td><small>{{ r.created_at }}</small></td>
+                        <td><strong>{{ r.material_name }}</strong></td>
+                        <td>
+                            {% if r.type == 'purchase' %}
+                            <span class="badge bg-success">购进</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">消耗</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-bold">{{ "%.0f"|format(r.quantity) }} {{ r.material_unit }}</td>
+                        <td>{{ "%.0f"|format(r.before_qty) }}</td>
+                        <td>{{ "%.0f"|format(r.after_qty) }}</td>
+                        <td>{{ r.operator or '-' }}</td>
+                        <td><small class="text-muted">{{ r.note or '-' }}</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+            <p class="mt-2">暂无出入库记录</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
