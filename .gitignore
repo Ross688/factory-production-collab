@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.factory-admin.env
+.DS_Store
+factory.db
+backups/
+*.sqlite
+*.sqlite3
