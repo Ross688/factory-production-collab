@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}我的生产任务 - {{ super() }}{% endblock %}
+{% block body_class %}workspace-page{% endblock %}
+
+{% block content %}
+{% set active_order = orders[0] if orders else none %}
+{% set active_steps = active_order.steps if active_order else [] %}
+{% set active_step = active_steps|selectattr('status', 'equalto', 'in_progress')|list|first if active_steps else none %}
+{% if not active_step and active_steps %}{% set active_step = active_steps|selectattr('status', 'equalto', 'pending')|list|first %}{% endif %}
+{% set active_done = active_steps|selectattr('status', 'equalto', 'completed')|list|length if active_steps else 0 %}
+{% set active_total = active_steps|length if active_steps else 1 %}
+{% set active_progress = ((active_done / active_total) * 100)|int if active_steps else 0 %}
+
+<div class="workspace-shell">
+    <aside class="workspace-sidebar">
+        <div class="brand-lockup"><div class="brand-mark"><i class="bi bi-boxes"></i></div><div><strong>智造工</strong><span>MES 2.0</span></div></div>
+        <nav class="workspace-nav" aria-label="生产导航">
+            <a class="workspace-nav-item active" href="{{ url_for('index') }}"><i class="bi bi-clipboard2-check"></i><span>我的任务</span><b>{{ orders|length }}</b></a>
+            <a class="workspace-nav-item" href="{{ url_for('checkin_page') }}"><i class="bi bi-person-gear"></i><span>生产执行</span></a>
+            <a class="workspace-nav-item" href="{{ url_for('index') }}"><i class="bi bi-card-checklist"></i><span>工单管理</span></a>
+            <a class="workspace-nav-item" href="{{ url_for('material_list') }}"><i class="bi bi-box-seam"></i><span>物料管理</span></a>
+            <a class="workspace-nav-item" href="{{ url_for('dashboard') }}"><i class="bi bi-shield-check"></i><span>质量管理</span></a>
+            <a class="workspace-nav-item" href="{{ url_for('capacity_plan') }}"><i class="bi bi-cpu"></i><span>设备与产能</span></a>
+            <a class="workspace-nav-item" href="{{ url_for('dashboard') }}"><i class="bi bi-bar-chart-line"></i><span>报表看板</span></a>
+            {% if current_user and current_user.role == 'admin' %}<a class="workspace-nav-item" href="{{ url_for('users_page') }}"><i class="bi bi-people"></i><span>账号管理</span></a>{% endif %}
+        </nav>
+        <div class="workspace-nav-bottom"><a class="workspace-nav-item" href="{{ url_for('logout') if current_user else url_for('login') }}"><i class="bi bi-{{ 'box-arrow-right' if current_user else 'box-arrow-in-right' }}"></i><span>{{ '退出登录' if current_user else '登录后操作' }}</span></a></div>
+    </aside>
+
+    <section class="workspace-main">
+        <header class="workspace-topbar"><div class="workspace-title"><button class="icon-button sidebar-toggle" aria-label="收起菜单"><i class="bi bi-list"></i></button><div><span class="eyebrow">SHOP FLOOR / {{ '已登录' if current_user else '只读模式' }}</span><h1>我的生产任务</h1></div></div><div class="workspace-userbar"><span class="live-pill"><i></i> 实时同步</span><button class="icon-button" aria-label="通知"><i class="bi bi-bell"></i><em>2</em></button>{% if current_user %}<span class="avatar">{{ (current_user.display_name or current_user.username)[0] }}</span><span class="user-name">{{ current_user.display_name or current_user.username }}</span>{% else %}<a href="{{ url_for('login') }}" class="btn btn-primary btn-sm">登录修改</a>{% endif %}</div></header>
+
+        <div class="workspace-content">
+            <div class="line-status-strip"><span><i class="status-dot success"></i> 生产线状态：生产一线（冲压-焊接-总装）</span><span class="status-badge success">运行中</span><span class="sync-time">更新于刚刚 <i class="bi bi-arrow-repeat"></i></span></div>
+            {% if active_order %}
+            <div class="workspace-grid">
+                <main class="task-column">
+                    <section class="task-hero">
+                        <div class="task-summary"><div><span class="muted-label">当前工单</span><div class="task-number">{{ active_order.order_no }}</div><div class="task-product">{{ active_order.product_name or '未命名产品' }} <span class="status-badge warning">{{ get_status_label(active_order.current_status()) }}</span></div></div><div class="progress-ring" style="--progress: {{ active_progress }}%;"><div><strong>{{ active_progress }}%</strong><span>工序进度</span></div></div></div>
+                        <div class="task-meta"><span>计划数量 <b>{{ active_order.quantity }}</b> 件</span><span>已完成 <b class="text-success">{{ active_done }}</b> / {{ active_total }} 道工序</span><span>交货日期 <b>{{ active_order.delivery_date or '待确认' }}</b></span></div>
+                        {% if active_step %}<div class="current-operation"><div><span class="muted-label">当前工序</span><h2>{{ active_step.step_name }}</h2><p><i class="bi bi-person"></i> {{ active_step.assignee or '待分配负责人' }} <span>·</span> 计划 {{ active_step.planned_date or '未排期' }}</p></div><a href="{{ url_for('order_detail', order_id=active_order.id) }}" class="icon-button"><i class="bi bi-chevron-up"></i></a></div>{% endif %}
+                        <div class="process-rail">{% for step in active_steps[:5] %}<div class="process-node {% if step.status == 'completed' %}done{% elif active_step and step.id == active_step.id %}current{% endif %}"><span>{{ loop.index }}</span><b>{{ step.step_name }}</b><small>{{ '已完成' if step.status == 'completed' else '当前工序' if active_step and step.id == active_step.id else '待执行' }}</small></div>{% if not loop.last %}<i class="bi bi-arrow-right"></i>{% endif %}{% endfor %}</div>
+                        <div class="quantity-actions"><div class="quantity-control"><button type="button" data-quantity-change="-1">−</button><strong data-quantity-value>1</strong><span>件</span><button type="button" data-quantity-change="1">＋</button></div>{% if current_user and active_step %}<button type="button" class="action-button blue step-status-btn" data-step-id="{{ active_step.id }}" data-status="in_progress"><i class="bi bi-play-fill"></i> 开始</button><button type="button" class="action-button orange" data-action="pause"><i class="bi bi-pause-fill"></i> 暂停</button><button type="button" class="action-button green step-status-btn" data-step-id="{{ active_step.id }}" data-status="completed"><i class="bi bi-check-lg"></i> 完成</button>{% else %}<a href="{{ url_for('login', next=url_for('order_detail', order_id=active_order.id)) }}" class="action-button blue"><i class="bi bi-lock"></i> 登录后操作</a>{% endif %}</div>
+                    </section>
+                    <section class="task-list-section"><div class="section-heading"><div><span class="eyebrow">WORK ORDERS</span><h2>其他生产任务</h2></div><a href="{{ url_for('order_create') }}" class="btn btn-outline-primary btn-sm">新建工单 <i class="bi bi-plus"></i></a></div>{% for order in orders[1:4] %}<a class="compact-task" href="{{ url_for('order_detail', order_id=order.id) }}"><div class="compact-state {{ 'green' if order.current_status() == 'in_progress' else 'orange' if order.current_status() == 'pending' else 'blue' }}"></div><div class="compact-copy"><strong>{{ order.order_no }}</strong><span>{{ order.product_name }}</span></div><div class="compact-progress"><b>{{ order.steps|selectattr('status', 'equalto', 'completed')|list|length }}/{{ order.steps|length }}</b><span>工序完成</span></div><i class="bi bi-chevron-right"></i></a>{% else %}<div class="empty-state">暂无其他工单</div>{% endfor %}</section>
+                </main>
+                <aside class="assistant-column"><div class="assistant-header"><h2><i class="bi bi-stars"></i> 现场助手</h2><span class="assistant-pulse"></span></div><div class="assistant-card material"><div class="assistant-card-title"><i class="bi bi-box-seam"></i><strong>物料短缺</strong><b>2 项待处理</b></div><p>支架组件（B-1023）</p><small>当前库存：3 件　最低库存：20 件</small><strong class="attention-text">预计缺料时间：30 分钟后</strong><button class="assistant-action">发起领料 <i class="bi bi-arrow-right"></i></button></div><div class="assistant-card quality"><div class="assistant-card-title"><i class="bi bi-shield-exclamation"></i><strong>质量问题</strong><b>1 项待处理</b></div><p>工单 {{ active_order.order_no }}</p><small>当前工序：{{ active_step.step_name if active_step else '待执行' }}</small><strong class="danger-text">需要质检确认</strong><button class="assistant-action">上报质量问题 <i class="bi bi-arrow-right"></i></button></div><div class="assistant-card success-card"><i class="bi bi-check-circle-fill"></i><div><strong>操作完成</strong><span>今日已完成 {{ active_done }} 道工序</span></div><button aria-label="关闭"><i class="bi bi-x"></i></button></div><a href="{{ url_for('dashboard') }}" class="assistant-more">查看全部提醒 <i class="bi bi-chevron-right"></i></a></aside>
+            </div>
+            {% else %}<div class="empty-state large"><i class="bi bi-clipboard2-x"></i><h2>还没有生产工单</h2><p>创建第一个工单后，就可以从这里跟踪工序和生产进度。</p><a href="{{ url_for('order_create') }}" class="btn btn-primary">创建生产工单</a></div>{% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}
